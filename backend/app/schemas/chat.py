@@ -10,8 +10,27 @@ Content = Annotated[
 ]
 
 
+# Trimmed and length-checked the same way `Content` is, so a title of nothing
+# but spaces is refused rather than stored as a blank name in the library. The
+# ceiling matches the column, and `crud.chat.title_from` already cuts the
+# auto-derived one well inside it.
+Title = Annotated[
+    str, StringConstraints(strip_whitespace=True, min_length=1, max_length=255)
+]
+
+
 class ChatMessageCreate(BaseModel):
     content: Content
+
+
+class ChatUpdate(BaseModel):
+    """What can be changed about a conversation from outside it: its name.
+
+    Not its turns — those are appended by talking — and not its summary, which
+    is written once when the chat is finished.
+    """
+
+    title: Title
 
 
 class ChatMessageRead(BaseModel):

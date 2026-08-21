@@ -20,7 +20,7 @@ from ..crud import note as crud_note
 from ..crud import provider_credential as crud_credential
 from ..db.database import get_db
 from ..db.models import Chat, User
-from ..schemas.chat import ChatMessageCreate, ChatRead, ChatSummaryRead
+from ..schemas.chat import ChatMessageCreate, ChatRead, ChatSummaryRead, ChatUpdate
 from ..services import conversation_summary, llm
 from .deps import get_current_user
 
@@ -116,6 +116,30 @@ def get_chat(
     current_user: User = Depends(get_current_user),
 ) -> ChatRead:
     return _read(_owned_chat(db, chat_id, current_user))
+
+
+@router.patch("/{chat_id}", response_model=ChatRead)
+def rename_chat(
+    chat_id: int,
+    payload: ChatUpdate,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+) -> ChatRead:
+    """
+    Correct a conversation's name.
+
+    A chat is named from the first thing said in it, which is a guess, and that
+    name is the whole of what stands for it in the library. So it is editable,
+    like a note's.
+
+    Deliberately not refused for a finished chat, unlike sending: renaming is
+    not saying anything, and a summarised conversation is the one whose name you
+    are most likely to want to fix, because it is the one you will come back to.
+    """
+    chat = crud_chat.rename_chat(db, chat_id, current_user.id, payload.title)
+    if chat is None:
+        raise NOT_FOUND
+    return _read(chat)
 
 
 @router.delete("/{chat_id}", status_code=status.HTTP_204_NO_CONTENT)

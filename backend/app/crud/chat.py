@@ -58,6 +58,24 @@ def list_chats(db: Session, user_id: int, skip: int = 0, limit: int = 100) -> li
     return list(db.scalars(stmt))
 
 
+def rename_chat(db: Session, chat_id: int, user_id: int, title: str) -> Chat | None:
+    """Give one of this user's chats a new name. None if it is not theirs.
+
+    `updated_at` is left alone deliberately. It orders the library by what you
+    were working on, and correcting a name is not working on the conversation —
+    a rename that moved a year-old chat to the head of the grid would be the
+    ordering lying about what you had been doing.
+    """
+    chat = get_chat(db, chat_id, user_id)
+    if chat is None:
+        return None
+
+    chat.title = title
+    db.commit()
+    db.refresh(chat)
+    return chat
+
+
 def delete_chat(db: Session, chat_id: int, user_id: int) -> bool:
     """Delete one of this user's chats and its turns; True if a row went."""
     chat = get_chat(db, chat_id, user_id)

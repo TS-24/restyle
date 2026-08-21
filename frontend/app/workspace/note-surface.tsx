@@ -119,8 +119,12 @@ const useMeasureEffect =
  * Never trusts a zero-width measurement: `scrollHeight` on an unlaid-out field
  * reports the text wrapped one character per line, which once left the hero
  * title 603px tall.
+ *
+ * Exported so the conversation's title field is the same field as the note's
+ * rather than a second one that looks like it. The measuring contract here has
+ * three traps in it already; there should only ever be one copy of it.
  */
-function useAutoHeight() {
+export function useAutoHeight() {
   const ref = useRef<HTMLTextAreaElement>(null);
   const frame = useRef(0);
 
