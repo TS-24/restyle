@@ -103,13 +103,18 @@ export function fitToText(
  * because `fitToText` is what a second scroller would go through, and a
  * signature that already takes them is one less thing to get wrong later.
  */
-const PAGE_SCROLLER: Scroller = {
+export const PAGE_SCROLLER: Scroller = {
   at: () => window.scrollY,
   to: position => window.scrollTo(0, position),
 };
 
-// useLayoutEffect warns during SSR, where there is nothing to measure.
-const useMeasureEffect =
+/**
+ * useLayoutEffect, except during SSR, where it warns and there is nothing to
+ * measure anyway. Exported because every field in the app that sizes itself to
+ * its text has to measure before the browser paints rather than after — a
+ * height written after paint is a visible reflow.
+ */
+export const useMeasureEffect =
   typeof window === "undefined" ? useEffect : useLayoutEffect;
 
 /**
