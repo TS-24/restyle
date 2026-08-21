@@ -5,11 +5,14 @@ import {
   useState,
 } from "react";
 import { useFetcher, useNavigate } from "react-router";
-import { motion } from "framer-motion";
+import { motion, useReducedMotion } from "framer-motion";
 import { CornerDownLeft, Sparkles } from "lucide-react";
 
 import ModelPicker from "~/chat/model-picker";
-import { NOTE_LAYOUT_TRANSITION } from "~/workspace/note-surface";
+import {
+  CHROME_TRANSITION,
+  NOTE_LAYOUT_TRANSITION,
+} from "~/workspace/note-surface";
 import type { Chat, ProviderSettings } from "~/lib/types";
 import {
   MessageScrollerProvider,
@@ -24,12 +27,30 @@ import { Marker } from "~/components/ui/marker";
 
 export const chatLayoutId = (id: number) => `chat-${id}`;
 
+/*
+  Both modes spell out every property that differs between them, including the
+  ones a page-mode conversation does not appear to have.
+
+  That is the note surface's arrangement and it is what makes the change an
+  animation rather than a swap: a property present in one style object and
+  absent from the other has nothing to tween from, so it lands in one frame
+  while everything around it glides. The transparent background and the
+  zero-strength shadow below are that shadow at rest, not an omission.
+*/
 const BOXED_STYLE = {
   borderRadius: 24,
   minHeight: "68vh",
   padding: "2.25rem 2.5rem",
   backgroundColor: "var(--color-paper-raised)",
   boxShadow: "0px 25px 50px -12px rgb(56 56 90 / 0.15)",
+} as const;
+
+const PAGE_STYLE = {
+  borderRadius: 24,
+  minHeight: "68vh",
+  padding: "2.25rem 2.5rem",
+  backgroundColor: "transparent",
+  boxShadow: "0px 25px 50px -12px rgb(56 56 90 / 0)",
 } as const;
 
 export default function ChatSurface({
@@ -185,6 +206,17 @@ export default function ChatSurface({
   }, [mode]);
 
   const boxed = mode === "boxed";
+  /*
+    §12 — reduced motion collapses the morph to nothing rather than dropping it,
+    so the conversation still lands in its resting state, just in one frame. The
+    note surface does exactly this; the two must agree or closing a chat and
+    closing a note answer the preference differently.
+  */
+  const reduced = useReducedMotion();
+  const layoutTransition = reduced
+    ? { ...NOTE_LAYOUT_TRANSITION, duration: 0 }
+    : NOTE_LAYOUT_TRANSITION;
+  const chromeTransition = reduced ? "none" : CHROME_TRANSITION;
 
   return (
     <motion.div
@@ -201,19 +233,32 @@ export default function ChatSurface({
       */
       layoutDependency={`${mode}:${chat.id}`}
       layoutId={boxed ? chatLayoutId(chat.id) : undefined}
-      transition={{ layout: NOTE_LAYOUT_TRANSITION }}
+      transition={{ layout: layoutTransition }}
       ref={rootRef}
       role="dialog"
       aria-label={`Conversation: ${chat.title}`}
       onDoubleClick={handleDoubleClick}
-      style={boxed ? BOXED_STYLE : {
-        borderRadius: 24,
-        minHeight: "68vh",
-        padding: "2.25rem 2.5rem",
+      style={{
+        ...(boxed ? BOXED_STYLE : PAGE_STYLE),
+        // The other half of the morph. Without it the projection moved the box
+        // while the paper it is made of changed in a single frame — geometry
+        // gliding, chrome snapping, which is the jump on close.
+        transition: chromeTransition,
       }}
       className="flex w-full flex-col"
     >
-      <div className="mx-auto flex w-full max-w-4xl flex-1 flex-col">
+      {/*
+        layout="position" counter-scales the contents, the way the cards and the
+        note surface do. Without it the projection that resizes the box stretches
+        the type inside it on the way out, so the words warp as the conversation
+        leaves.
+      */}
+      <motion.div
+        layout="position"
+        layoutDependency={`${mode}:${chat.id}`}
+        transition={{ layout: layoutTransition }}
+        className="mx-auto flex w-full max-w-4xl flex-1 flex-col"
+      >
         <h1 className="text-center font-display text-3xl font-medium leading-[1.2] tracking-tight text-ink">
           {chat.title}
         </h1>
@@ -311,9 +356,14 @@ export default function ChatSurface({
             </div>
           </div>
         )}
-      </div>
+      </motion.div>
 
-      <div className="mx-auto mt-6 flex w-full max-w-4xl shrink-0 items-center justify-between gap-4">
+      <motion.div
+        layout="position"
+        layoutDependency={`${mode}:${chat.id}`}
+        transition={{ layout: layoutTransition }}
+        className="mx-auto mt-6 flex w-full max-w-4xl shrink-0 items-center justify-between gap-4"
+      >
         <span className="text-sm italic text-ink/40">
           {finished
             ? "Esc to go back"
@@ -340,7 +390,7 @@ export default function ChatSurface({
             {finishing ? "Summarising…" : "Finish & summarise"}
           </button>
         )}
-      </div>
+      </motion.div>
     </motion.div>
   );
 }
