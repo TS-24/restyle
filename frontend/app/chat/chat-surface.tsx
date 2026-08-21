@@ -9,7 +9,12 @@ import { motion } from "framer-motion";
 import { CornerDownLeft, Sparkles } from "lucide-react";
 
 import ModelPicker from "~/chat/model-picker";
-import { NOTE_LAYOUT_TRANSITION } from "~/workspace/note-surface";
+import {
+  fitToText,
+  NOTE_LAYOUT_TRANSITION,
+  PAGE_SCROLLER,
+  useMeasureEffect,
+} from "~/workspace/note-surface";
 import type { Chat, ProviderSettings } from "~/lib/types";
 import {
   MessageScrollerProvider,
@@ -52,7 +57,14 @@ export default function ChatSurface({
   const chooser = useFetcher();
 
   const [draft, setDraft] = useState("");
+  /*
+    One message may wait behind the turn in front of it — one, not a list. A
+    backlog you can neither see nor edit is worse than a field you have to send
+    from twice.
+  */
+  const [queued, setQueued] = useState<string | null>(null);
   const rootRef = useRef<HTMLDivElement>(null);
+  const composer = useRef<HTMLTextAreaElement>(null);
 
   const fromAction = [finisher.data, sender.data].find(
     (data): data is { ok: true; chat: Chat } =>
@@ -86,18 +98,27 @@ export default function ChatSurface({
         }
       : chat;
 
-  const landed = chat.messages.filter(message => message.id > 0).length;
-  const sentCount = useRef(landed);
-  useEffect(() => {
-    if (landed !== sentCount.current) {
-      sentCount.current = landed;
-      setDraft("");
-    }
-  }, [landed]);
-
+  const sendError =
+    sender.data && !(sender.data as { ok: boolean }).ok
+      ? (sender.data as { error: string }).error
+      : null;
   const error =
-    (sender.data && !(sender.data as { ok: boolean }).ok ? (sender.data as { error: string }).error : null) ??
+    sendError ??
     (finisher.data && !(finisher.data as { ok: boolean }).ok ? (finisher.data as { error: string }).error : null);
+
+  /*
+    The composer grows with what is in it and then scrolls inside itself.
+
+    `fitToText` rather than a bare `scrollHeight` assignment: letting a field
+    shrink means collapsing it to `auto` first, and the collapse shortens the
+    page under it, so the browser clamps the scroll position before the real
+    height goes back on. That is the same trap the note's fields are written
+    around, and this is the same solution rather than a second one.
+  */
+  useMeasureEffect(() => {
+    const el = composer.current;
+    if (el && el.clientWidth > 0) fitToText(el, [PAGE_SCROLLER]);
+  }, [draft, finished]);
 
   /*
     Finishing writes a note, so finishing goes to it.
@@ -119,14 +140,72 @@ export default function ChatSurface({
     navigate(`/notes?open=${noteId}`, { replace: true });
   }, [finisher.state, finisher.data, navigate]);
 
+  /** The turn in flight, kept so a failure can hand its words back. */
+  const lastSent = useRef<string | null>(null);
+
+  const submit = useCallback(
+    (content: string) => {
+      lastSent.current = content;
+      sender.submit(
+        { intent: "send", content },
+        { method: "post", action: `/chats/${chat.id}` },
+      );
+    },
+    [sender, chat.id],
+  );
+
+  /*
+    Sending clears the field rather than waiting for the turn to land, because
+    the field is no longer locked while it does: the next thing you want to say
+    has to have somewhere to go. A turn that fails hands its words back — see
+    below.
+  */
   const send = () => {
     const content = draft.trim();
-    if (!content || pending || finished) return;
-    sender.submit(
-      { intent: "send", content },
-      { method: "post", action: `/chats/${chat.id}` },
-    );
+    if (!content || finished) return;
+    if (pending) {
+      if (queued !== null) return;
+      setQueued(content);
+      setDraft("");
+      return;
+    }
+    setDraft("");
+    submit(content);
   };
+
+  // The queued message goes the moment the turn in front of it lands. Not after
+  // a failure: there the words come back to the composer instead, and sending
+  // another into a chat that just refused one would only fail again.
+  useEffect(() => {
+    if (pending || queued === null || sendError) return;
+    const content = queued;
+    setQueued(null);
+    submit(content);
+  }, [pending, queued, sendError, submit]);
+
+  /*
+    A failed turn puts everything unsent back in the composer.
+
+    When a provider has a bad minute the words belong in the one place you can
+    edit and resend them — the alternative is a paragraph you typed once and an
+    error message where it went. Anything already queued comes back with it,
+    below whatever you have since typed.
+  */
+  const handedBack = useRef(false);
+  useEffect(() => {
+    if (sender.state !== "idle") {
+      handedBack.current = false;
+      return;
+    }
+    if (!sendError || handedBack.current) return;
+    handedBack.current = true;
+    const unsent = [lastSent.current, queued].filter(
+      (text): text is string => Boolean(text),
+    );
+    lastSent.current = null;
+    setQueued(null);
+    setDraft(prev => [...unsent, prev.trim()].filter(Boolean).join("\n\n"));
+  }, [sender.state, sendError, queued]);
 
   const handleKeyDown = (event: React.KeyboardEvent) => {
     // Escape is on `document` below. This prop only fires while focus is inside
@@ -225,7 +304,16 @@ export default function ChatSurface({
         ) : (
           <MessageScrollerProvider autoScroll>
             <MessageScroller className="mt-8 flex flex-1 flex-col overflow-hidden">
-              <MessageScrollerViewport style={{ maxHeight: "46vh" }}>
+              {/*
+                A ceiling, not a claim. It used to be a flat 46vh, which the
+                composer's own growth then added to — the two together could
+                outrun the box. Now the transcript gives way as the composer
+                grows and never falls below a few turns' worth.
+              */}
+              <MessageScrollerViewport
+                className="flex-1"
+                style={{ minHeight: "12rem", maxHeight: "46vh" }}
+              >
                 <MessageScrollerContent className="gap-6">
                   {shown.messages.map(message => (
                     <MessageScrollerItem
@@ -288,20 +376,27 @@ export default function ChatSurface({
             } />
             <div className="relative w-full">
               <textarea
+                ref={composer}
                 value={draft}
                 onChange={event => setDraft(event.target.value)}
                 onKeyDown={handleKeyDown}
-                rows={2}
+                rows={1}
                 autoFocus
-                disabled={pending}
                 placeholder="Ask something..."
                 aria-label="Your message"
-                className="block w-full resize-none rounded-2xl border border-ink/10 bg-paper px-5 py-3 pr-14 font-sans text-lg leading-relaxed text-ink caret-accent-ink outline-none transition-colors placeholder:text-ink/30 focus:border-ink/25 disabled:opacity-60"
+                /*
+                  Not disabled while a reply is in flight. That is precisely the
+                  stretch where you have the next thing to say, and graying the
+                  field out made you wait for the model before you could write
+                  it down.
+                */
+                style={{ maxHeight: "38vh", overflowY: "auto" }}
+                className="block w-full resize-none rounded-2xl border border-ink/10 bg-paper px-5 py-3 pr-14 font-sans text-lg leading-relaxed text-ink caret-accent-ink outline-none transition-colors placeholder:text-ink/30 focus:border-ink/25"
               />
               <button
                 type="button"
                 onClick={send}
-                disabled={pending || draft.trim().length === 0}
+                disabled={draft.trim().length === 0 || (pending && queued !== null)}
                 aria-label="Send"
                 title="Send"
                 className="absolute bottom-3 right-3 rounded-xl p-2 text-ink/45 transition-colors hover:text-ink disabled:opacity-30 disabled:hover:text-ink/45 cursor-pointer disabled:cursor-default"
@@ -309,6 +404,11 @@ export default function ChatSurface({
                 <CornerDownLeft className="size-5" />
               </button>
             </div>
+            {queued !== null && (
+              <p className="mt-2 text-sm italic text-ink/45">
+                One message queued — it sends when this reply lands.
+              </p>
+            )}
           </div>
         )}
       </div>
