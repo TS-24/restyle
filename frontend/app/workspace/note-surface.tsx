@@ -50,7 +50,13 @@ export const NOTE_LAYOUT_TRANSITION = {
   ease: [0.4, 0, 0.2, 1],
 } as const;
 
-const CHROME_TRANSITION = [
+/**
+ * The CSS side of the morph: what the box is made of, tweening over the same
+ * window the layout projection takes to move it. Exported because the chat
+ * surface morphs the same way and must not carry a second literal — a chrome
+ * transition that outlasts its tween is the box arriving before its paper.
+ */
+export const CHROME_TRANSITION = [
   "font-size",
   "padding",
   "background-color",
