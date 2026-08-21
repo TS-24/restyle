@@ -234,16 +234,32 @@ export default function ChatSurface({
                       scrollAnchor={message.role === "user"}
                     >
                       <Message align={message.role === "user" ? "end" : "start"}>
+                        {/*
+                          One box on screen, and it is the model's.
+
+                          This was the other way round: the reader's own turns
+                          were the filled thing and the answers were `ghost` —
+                          transparent and unpadded, which is to say unstyled
+                          prose lying on the page. So the only half marked out
+                          was the half you already wrote, and the replies ran
+                          into the background and into each other.
+
+                          Only the answer is lifted, because §5 allows one step
+                          off the page ground and never two. What separates the
+                          reader's turn is the other two tools that rule reaches
+                          for first: alignment, and the tone of its ink. A
+                          second box would be a border doing type's job.
+                        */}
                         <MessageContent>
                           {message.role === "user" ? (
-                            <Bubble variant="secondary">
-                              <BubbleContent className="text-lg leading-relaxed whitespace-pre-line">
+                            <Bubble variant="ghost">
+                              <BubbleContent className="max-w-[68ch] text-lg leading-relaxed text-ink/70 whitespace-pre-line">
                                 {message.content}
                               </BubbleContent>
                             </Bubble>
                           ) : (
-                            <Bubble variant="ghost" className="max-w-none">
-                              <BubbleContent className="max-w-[68ch] text-lg leading-relaxed text-ink/85 whitespace-pre-line">
+                            <Bubble variant="muted" className="max-w-none">
+                              <BubbleContent className="max-w-[76ch] rounded-3xl px-7 py-5 text-lg leading-relaxed text-ink/85 whitespace-pre-line">
                                 {message.content}
                               </BubbleContent>
                             </Bubble>
