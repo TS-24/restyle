@@ -212,3 +212,49 @@ test("still revalidates after a mutation", () => {
 
   expect(shouldRevalidate(args)).toBe(true);
 });
+
+/**
+ * The note's text gets the whole reading column, not a third of it.
+ *
+ * The box is `max-w-4xl` and the title spans all of it, but the body sat in a
+ * `max-w-[68ch]` wrapper of its own — so the thing you actually write in was
+ * the narrowest element on a page that exists to be written in. jsdom has no
+ * layout and no stylesheet, so what is pinned is the declared measure rather
+ * than the pixels it produces; the number is here because it regressed to a
+ * third of the page once and nothing would have caught it.
+ */
+function measureOf(wrapper: Element | null | undefined): number {
+  const found = wrapper?.className.match(/max-w-\[(\d+)ch\]/);
+  // No cap at all is the column's own width, which is wider than any cap.
+  return found ? Number(found[1]) : Infinity;
+}
+
+test("the body column is as wide as the title's", () => {
+  const container = document.createElement("div");
+  document.body.append(container);
+  const router = createMemoryRouter(
+    [
+      {
+        path: "/notes",
+        action: () => ({ ok: true }),
+        Component: () => <Workspace {...props} />,
+      },
+    ],
+    { initialEntries: ["/notes?open=1"] },
+  );
+  const root = createRoot(container);
+  act(() => {
+    root.render(<RouterProvider router={router} />);
+  });
+  cleanup = () => {
+    act(() => root.unmount());
+    container.remove();
+  };
+
+  const title = container.querySelector('textarea[aria-label="Note title"]');
+  const body = container.querySelector('textarea[aria-label="Note text"]');
+
+  expect(measureOf(body?.parentElement)).toBeGreaterThanOrEqual(
+    Math.min(measureOf(title?.parentElement), 90),
+  );
+});

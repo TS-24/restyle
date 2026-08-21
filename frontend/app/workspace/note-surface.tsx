@@ -568,8 +568,13 @@ export default function NoteSurface({
         {/*
           The wrapper has to fit the field exactly and be the positioning
           context: the word roller measures against its origin.
+
+          The measure is wide enough that the column above decides the width,
+          not this cap. It used to be 68ch, which made the thing you actually
+          write in the narrowest element on a page that exists to be written in
+          — the title spanned the whole box and the text sat in a third of it.
         */}
-        <div className="relative mx-auto mt-8 w-full max-w-[68ch]">
+        <div className="relative mx-auto mt-8 w-full max-w-[92ch]">
           <textarea
             ref={bodyField.ref}
             value={content}
