@@ -23,6 +23,14 @@ export async function action({ request }: Route.ActionArgs) {
         const created = await api.createChat(token);
         return { ok: true, id: created.id };
       }
+      case "rename": {
+        await api.renameChat(
+          token,
+          Number(formData.get("id")),
+          String(formData.get("title") ?? ""),
+        );
+        return { ok: true };
+      }
       case "delete": {
         await api.deleteChat(token, Number(formData.get("id")));
         return { ok: true };

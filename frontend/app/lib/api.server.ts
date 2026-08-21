@@ -163,6 +163,13 @@ export const api = {
   createChat: (token: string) =>
     request<Chat>("/api/chats", token, { method: "POST", body: "{}" }),
 
+  /** Correct a conversation's name. See backend/app/api/chats.py::rename_chat. */
+  renameChat: (token: string, id: number, title: string) =>
+    request<Chat>(`/api/chats/${id}`, token, {
+      method: "PATCH",
+      body: JSON.stringify({ title }),
+    }),
+
   deleteChat: (token: string, id: number) =>
     request<void>(`/api/chats/${id}`, token, { method: "DELETE" }),
 

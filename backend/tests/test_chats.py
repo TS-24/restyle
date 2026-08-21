@@ -408,3 +408,65 @@ class TestWhatAFinishedChatLeavesBehind:
         configured.post(f"/api/chats/{chat}/summarize")
 
         assert len(configured.get(f"/api/chats/{chat}").json()["messages"]) == 2
+
+
+class TestRenamingAConversation:
+    """
+    A chat's title is taken from the first thing said in it, which is a guess.
+
+    It is the only thing standing for the conversation in the library, so the
+    reader has to be able to correct it — the same way they can correct a note's
+    title, and through the same kind of request.
+    """
+
+    def test_a_chat_can_be_renamed(self, client):
+        chat = new_chat(client)
+
+        body = client.patch(f"/api/chats/{chat}", json={"title": "Spring tides"}).json()
+
+        assert body["title"] == "Spring tides"
+        assert client.get(f"/api/chats/{chat}").json()["title"] == "Spring tides"
+
+    def test_a_title_of_nothing_but_spaces_is_refused(self, client):
+        chat = new_chat(client)
+
+        assert client.patch(f"/api/chats/{chat}", json={"title": "   "}).status_code == 422
+
+    def test_surrounding_space_is_trimmed(self, client):
+        chat = new_chat(client)
+
+        body = client.patch(f"/api/chats/{chat}", json={"title": "  Spring tides  "}).json()
+
+        assert body["title"] == "Spring tides"
+
+    def test_a_finished_chat_can_still_be_renamed(self, configured, answering, monkeypatch):
+        """
+        Renaming is not saying anything, so ALREADY_FINISHED does not apply.
+        A summarised conversation is exactly the one whose name you are most
+        likely to want to fix, because it is the one you will come back to.
+        """
+        monkeypatch.setattr(
+            "app.api.chats.conversation_summary.summarize",
+            lambda *a: summary.ConversationSummary(
+                general="g", topics=["t"], questions="q", answers="a"
+            ),
+        )
+        chat = new_chat(configured)
+        send(configured, chat)
+        configured.post(f"/api/chats/{chat}/summarize")
+
+        assert (
+            configured.patch(f"/api/chats/{chat}", json={"title": "Gerunds"}).status_code
+            == 200
+        )
+
+    def test_renaming_a_missing_chat_is_a_404(self, client):
+        assert client.patch("/api/chats/9999", json={"title": "x"}).status_code == 404
+
+    def test_another_account_cannot_rename_it(self, client, other_client):
+        chat = new_chat(client)
+
+        assert (
+            other_client.patch(f"/api/chats/{chat}", json={"title": "theirs"}).status_code
+            == 404
+        )

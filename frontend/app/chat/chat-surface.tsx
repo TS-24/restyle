@@ -9,7 +9,10 @@ import { motion } from "framer-motion";
 import { CornerDownLeft, Sparkles } from "lucide-react";
 
 import ModelPicker from "~/chat/model-picker";
-import { NOTE_LAYOUT_TRANSITION } from "~/workspace/note-surface";
+import {
+  NOTE_LAYOUT_TRANSITION,
+  useAutoHeight,
+} from "~/workspace/note-surface";
 import type { Chat, ProviderSettings } from "~/lib/types";
 import {
   MessageScrollerProvider,
@@ -50,9 +53,11 @@ export default function ChatSurface({
   const sender = useFetcher();
   const finisher = useFetcher();
   const chooser = useFetcher();
+  const renamer = useFetcher();
 
   const [draft, setDraft] = useState("");
   const rootRef = useRef<HTMLDivElement>(null);
+  const titleField = useAutoHeight();
 
   const fromAction = [finisher.data, sender.data].find(
     (data): data is { ok: true; chat: Chat } =>
@@ -147,6 +152,35 @@ export default function ChatSurface({
     if (onReturn) onReturn();
   };
 
+  /*
+    The conversation's name, editable in place.
+
+    It is derived from the first thing said in it, which is a guess, and it is
+    the whole of what stands for the conversation in the library — so it is a
+    field, like the note's title, not a heading. Local state rather than the
+    chat's own value because a controlled field cannot be typed into otherwise;
+    it re-seeds when the conversation changes underneath it.
+  */
+  const [title, setTitle] = useState(chat.title);
+  const savedTitle = useRef(chat.title);
+  useEffect(() => {
+    if (chat.title === savedTitle.current) return;
+    savedTitle.current = chat.title;
+    setTitle(chat.title);
+  }, [chat.title]);
+
+  const saveTitle = () => {
+    // "Untitled" is the placeholder a new chat and a new note both carry, and
+    // the API refuses an empty title — but the field lets you clear it.
+    const next = title.trim() || "Untitled";
+    if (next === savedTitle.current.trim()) return;
+    savedTitle.current = next;
+    renamer.submit(
+      { intent: "rename", id: String(chat.id), title: next },
+      { method: "post", action: "/chats" },
+    );
+  };
+
   const collapse = useRef(() => {});
   useEffect(() => {
     collapse.current = () => onClose();
@@ -214,9 +248,30 @@ export default function ChatSurface({
       className="flex w-full flex-col"
     >
       <div className="mx-auto flex w-full max-w-4xl flex-1 flex-col">
-        <h1 className="text-center font-display text-3xl font-medium leading-[1.2] tracking-tight text-ink">
-          {chat.title}
-        </h1>
+        {/*
+          Same contract as the note's title: a wrapper that fits the field
+          exactly, one line to start, grown to its text by `useAutoHeight`.
+          Enter commits and steps out rather than adding a line — a title is
+          not a place to write a paragraph.
+        */}
+        <div className="relative w-full">
+          <textarea
+            ref={titleField.ref}
+            value={title}
+            onChange={event => setTitle(event.target.value)}
+            onBlur={saveTitle}
+            onKeyDown={event => {
+              if (event.key !== "Enter" || event.shiftKey) return;
+              event.preventDefault();
+              (event.target as HTMLTextAreaElement).blur();
+            }}
+            rows={1}
+            spellCheck={false}
+            placeholder="Untitled"
+            aria-label="Conversation title"
+            className="block w-full resize-none overflow-hidden border-none bg-transparent p-0 text-center font-display text-3xl font-medium leading-[1.2] tracking-tight text-ink caret-accent-ink outline-none placeholder:text-ink/25"
+          />
+        </div>
 
         {chat.messages.length === 0 && !pending ? (
           <p className="mt-8 flex flex-1 items-center justify-center text-lg italic text-ink/40">
