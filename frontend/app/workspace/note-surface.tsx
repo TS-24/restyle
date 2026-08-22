@@ -9,6 +9,7 @@ import { Link, useFetcher } from "react-router";
 import { motion, useReducedMotion } from "framer-motion";
 import { MessagesSquare } from "lucide-react";
 import WordRoller from "~/workspace/word-roller";
+import Markdown, { lineAt, offsetOfLine } from "~/notes/markdown";
 import type { Note } from "~/lib/types";
 
 /**
@@ -122,6 +123,20 @@ const useMeasureEffect =
  */
 function useAutoHeight() {
   const ref = useRef<HTMLTextAreaElement>(null);
+  /*
+    The element, as state as well as a ref.
+
+    The body field is unmounted while its markdown is rendered in its place, so
+    "the field" is not one element for the life of the hook any more. A ref
+    alone cannot say when it changed, and the observer below would go on
+    watching the parent of a textarea that had been thrown away — the effect's
+    only dependency was a stable callback, so it never re-ran.
+  */
+  const [field, setField] = useState<HTMLTextAreaElement | null>(null);
+  const attach = useCallback((el: HTMLTextAreaElement | null) => {
+    ref.current = el;
+    setField(el);
+  }, []);
   const frame = useRef(0);
 
   const measure = useCallback(() => {
@@ -172,10 +187,10 @@ function useAutoHeight() {
   // per keystroke, and the two fields never change together — the component
   // below re-measures each one against its own text. The observer and the font
   // callback beneath cover the cases where the height moves without the text.
-  useMeasureEffect(measure, [measure]);
+  useMeasureEffect(measure, [measure, field]);
 
   useEffect(() => {
-    const el = ref.current;
+    const el = field;
     if (!el?.parentElement) return;
     // The parent, not the field: observing the field would see the height we
     // just wrote and loop.
@@ -189,9 +204,9 @@ function useAutoHeight() {
       observer.disconnect();
       el.removeEventListener("transitionend", measure);
     };
-  }, [measure]);
+  }, [measure, field]);
 
-  return { ref, measure, track };
+  return { ref, attach, measure, track };
 }
 
 export default function NoteSurface({
@@ -219,6 +234,25 @@ export default function NoteSurface({
   const rootRef = useRef<HTMLDivElement>(null);
   const titleField = useAutoHeight();
   const bodyField = useAutoHeight();
+
+  /*
+    Rendered at rest, raw under the caret.
+
+    A note that came out of a conversation has headings in it, and a textarea
+    has no way to be one. So the body reads as a document until you write in
+    it, and is the same single textarea the moment you do — `fitToText`, the
+    word roller and save-on-blur all keep the contract they had, they simply
+    only apply while you are editing, which is when they mean anything.
+  */
+  const [writing, setWriting] = useState(false);
+  const caretOnEnter = useRef<number | null>(null);
+  const rendered = useRef<HTMLDivElement>(null);
+
+  const startWriting = (line: number | null) => {
+    caretOnEnter.current =
+      line === null ? content.length : offsetOfLine(content, line);
+    setWriting(true);
+  };
 
   const boxed = mode === "boxed";
   const type = boxed ? TYPE.boxed : TYPE.page;
@@ -259,6 +293,24 @@ export default function NoteSurface({
     if (!pending?.field) return;
     pendingCaret.current = null;
     pending.field.setSelectionRange(pending.at, pending.at);
+  });
+
+  /*
+    Landing the caret in the block that was clicked.
+
+    Same shape as `pendingCaret` above and for the same reason: the field does
+    not exist yet when the click happens, so the position is recorded and
+    applied once React has put the textarea on the page. A layout effect,
+    because focusing after paint is a visible jump of the caret.
+  */
+  useMeasureEffect(() => {
+    if (!writing || caretOnEnter.current === null) return;
+    const field = bodyField.ref.current;
+    if (!field) return;
+    const at = Math.min(caretOnEnter.current, field.value.length);
+    caretOnEnter.current = null;
+    field.focus();
+    field.setSelectionRange(at, at);
   });
 
   // Re-measure a field when its own text changes, and both when the mode flips:
@@ -333,13 +385,28 @@ export default function NoteSurface({
     if ((event.target as HTMLElement).closest("textarea, button, a")) return;
     const title = titleField.ref.current;
     const body = bodyField.ref.current;
-    if (!title || !body) return;
+    // Whichever of the two the note's text is currently in. At rest that is the
+    // rendered markdown, not a field — this handler runs for those clicks too,
+    // which is what keeps "the page is the note" true while it is being read.
+    const text = body ?? rendered.current;
+    if (!title || !text) return;
+    event.preventDefault();
     // Above the note's first line reads as the heading. Everything lower — very
     // nearly all of the page — is the note.
-    const field = event.clientY < body.getBoundingClientRect().top ? title : body;
-    event.preventDefault();
-    field.focus();
-    field.setSelectionRange(field.value.length, field.value.length);
+    if (event.clientY < text.getBoundingClientRect().top) {
+      title.focus();
+      title.setSelectionRange(title.value.length, title.value.length);
+      return;
+    }
+    if (body) {
+      body.focus();
+      body.setSelectionRange(body.value.length, body.value.length);
+      return;
+    }
+    // Rendered: the click resolves to the block it landed in, and the caret to
+    // the start of that block's line in the source. A click that hit no block
+    // at all — the margin below the text — means the end, as it always has.
+    startWriting(lineAt(event.target));
   };
 
   /*
@@ -539,7 +606,7 @@ export default function NoteSurface({
             exactly, so the roller can measure against its origin. */}
         <div className="relative mt-6 w-full">
           <textarea
-            ref={titleField.ref}
+            ref={titleField.attach}
             value={title}
             onChange={(e) => setTitle(e.target.value)}
             rows={1}
@@ -570,28 +637,47 @@ export default function NoteSurface({
           context: the word roller measures against its origin.
         */}
         <div className="relative mx-auto mt-8 w-full max-w-[68ch]">
-          <textarea
-            ref={bodyField.ref}
-            value={content}
-            onChange={(e) => setContent(e.target.value)}
-            rows={1}
-            placeholder="Start writing…"
-            aria-label="Note text"
-            style={{ fontSize: type.body, transition: chromeTransition }}
-            className="block w-full resize-none overflow-hidden border-none bg-transparent p-0 text-center font-sans leading-relaxed text-ink/85 caret-accent-ink outline-none placeholder:text-ink/25"
-          />
-          <WordRoller
-            fieldRef={bodyField.ref}
-            value={content}
-            background={surface}
-            onReplace={(start, end, word) => {
-              setContent(prev => prev.slice(0, start) + word + prev.slice(end));
-              pendingCaret.current = {
-                field: bodyField.ref.current,
-                at: start + word.length,
-              };
-            }}
-          />
+          {writing ? (
+            <>
+              <textarea
+                ref={bodyField.attach}
+                value={content}
+                onChange={(e) => setContent(e.target.value)}
+                onBlur={() => setWriting(false)}
+                rows={1}
+                placeholder="Start writing…"
+                aria-label="Note text"
+                style={{ fontSize: type.body, transition: chromeTransition }}
+                className="block w-full resize-none overflow-hidden border-none bg-transparent p-0 text-center font-sans leading-relaxed text-ink/85 caret-accent-ink outline-none placeholder:text-ink/25"
+              />
+              <WordRoller
+                fieldRef={bodyField.ref}
+                value={content}
+                background={surface}
+                onReplace={(start, end, word) => {
+                  setContent(prev => prev.slice(0, start) + word + prev.slice(end));
+                  pendingCaret.current = {
+                    field: bodyField.ref.current,
+                    at: start + word.length,
+                  };
+                }}
+              />
+            </>
+          ) : (
+            <div
+              ref={rendered}
+              data-note-body
+              style={{ fontSize: type.body, transition: chromeTransition }}
+              className="block w-full text-center font-sans leading-relaxed text-ink/85"
+            >
+              {content.trim() ? (
+                <Markdown>{content}</Markdown>
+              ) : (
+                // The field's own placeholder, in the field's absence.
+                <span className="text-ink/25">Start writing…</span>
+              )}
+            </div>
+          )}
         </div>
       </div>
 

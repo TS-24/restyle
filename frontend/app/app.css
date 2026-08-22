@@ -88,6 +88,127 @@ html {
   mask-repeat: no-repeat;
 }
 
+/*
+  A note's markdown, rendered.
+
+  Deliberately close to the textarea it swaps with. This appears and disappears
+  under the caret — rendered at rest, raw while you write — so a type scale that
+  disagreed with the raw text would make the note jump on every click into it.
+  Headings are one modest step each rather than the usual octave, and the block
+  rhythm is the field's own line height.
+
+  The surface centres its text in both modes (see note-surface.tsx: alignment
+  cannot be tweened, so it does not differ between them). Prose follows that.
+  The structured blocks do not: a centred list is unreadable. They align their
+  own contents and centre as a block instead, so the note's centre of mass is
+  the same either way.
+*/
+.markdown > :first-child {
+  margin-top: 0;
+}
+
+.markdown > :last-child {
+  margin-bottom: 0;
+}
+
+.markdown p {
+  margin-block: 0.75em;
+}
+
+.markdown :is(h1, h2, h3, h4, h5, h6) {
+  @apply font-display font-medium tracking-tight text-ink;
+  line-height: 1.25;
+  margin-block: 1.15em 0.45em;
+}
+
+.markdown h1 {
+  font-size: 1.45em;
+}
+
+.markdown h2 {
+  font-size: 1.2em;
+}
+
+.markdown h3 {
+  font-size: 1.05em;
+}
+
+.markdown :is(ul, ol) {
+  margin-block: 0.75em;
+  padding-inline-start: 1.4em;
+  text-align: start;
+  width: fit-content;
+  margin-inline: auto;
+}
+
+.markdown ul {
+  list-style: disc;
+}
+
+.markdown ol {
+  list-style: decimal;
+}
+
+.markdown li {
+  margin-block: 0.25em;
+}
+
+.markdown a {
+  @apply text-accent-ink underline underline-offset-2;
+}
+
+.markdown code {
+  @apply bg-paper-raised;
+  border-radius: 0.35em;
+  padding: 0.1em 0.35em;
+  font-size: 0.9em;
+}
+
+.markdown pre {
+  @apply bg-paper-raised;
+  border-radius: 0.75em;
+  padding: 0.9em 1.1em;
+  margin-block: 0.9em;
+  overflow-x: auto;
+  text-align: start;
+}
+
+.markdown pre code {
+  background: none;
+  padding: 0;
+}
+
+.markdown blockquote {
+  @apply text-ink/70;
+  border-inline-start: 2px solid var(--color-hairline);
+  padding-inline-start: 1em;
+  margin-block: 0.9em;
+  text-align: start;
+  width: fit-content;
+  margin-inline: auto;
+}
+
+.markdown hr {
+  border: 0;
+  border-top: 1px solid var(--color-hairline);
+  margin-block: 1.4em;
+}
+
+.markdown table {
+  margin: 0.9em auto;
+  border-collapse: collapse;
+  text-align: start;
+}
+
+.markdown :is(th, td) {
+  border: 1px solid var(--color-hairline);
+  padding: 0.4em 0.7em;
+}
+
+.markdown strong {
+  font-weight: 600;
+}
+
 html,
 body {
   @apply bg-paper text-ink;

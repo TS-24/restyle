@@ -7,6 +7,7 @@ import {
   NOTE_LAYOUT_TRANSITION,
 } from "~/workspace/note-surface";
 import GhostCard from "~/notes/ghost-card";
+import Markdown from "~/notes/markdown";
 import LocalTime from "~/lib/local-time";
 import ChatCard from "~/notes/chat-card";
 import type { Chat, Note, VocabularyAnalysis } from "~/lib/types";
@@ -165,10 +166,14 @@ function NoteCard({
             </fetcher.Form>
           </div>
           {/* Capped and faded rather than whole — see `.note-preview` in
-              app.css. A card is a glance at the note; you open it to read it. */}
-          <p className="note-preview mt-2 text-base leading-relaxed text-ink/85 whitespace-pre-line">
-            {content}
-          </p>
+              app.css. A card is a glance at the note; you open it to read it.
+
+              Rendered, because a note written by a finished conversation is
+              headings and paragraphs, and a card showing its `##` is a card
+              showing the machinery rather than the note. */}
+          <Markdown className="note-preview mt-2 text-base leading-relaxed text-ink/85">
+            {content ?? ""}
+          </Markdown>
           {data.created_at && (
             <div className="mt-6 text-sm italic text-ink/45">
               <LocalTime value={data.created_at} />
