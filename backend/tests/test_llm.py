@@ -177,6 +177,27 @@ class TestTranscriptConversion:
         # Only the system message; a chat with no turns is not an error.
         assert len(llm.to_messages([])) == 1
 
+    def test_a_system_turn_is_folded_into_the_leading_message(self):
+        """
+        The note a conversation was started from is context, not a turn.
+
+        Providers do not all take a system message part-way through an
+        exchange — Anthropic takes system as a top-level argument and has
+        nowhere to put a second one — so it goes into the one at the front,
+        which is also where it honestly belongs: the ground the exchange
+        stands on, not something somebody said in the middle of it.
+        """
+        from langchain_core.messages import HumanMessage
+
+        messages = llm.to_messages(
+            [("system", "The moon pulls."), *TURNS]
+        )
+
+        assert len(messages) == 1 + len(TURNS)
+        assert "The moon pulls." in messages[0].content
+        assert llm.SYSTEM_PROMPT in messages[0].content
+        assert isinstance(messages[1], HumanMessage)
+
     def test_an_unknown_role_is_refused(self):
         # A role the database should never hold. Guessing at it would put words
         # in one speaker's mouth as the other's.

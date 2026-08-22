@@ -190,6 +190,7 @@ class TestFinishing:
     @pytest.fixture
     def summarising(self, monkeypatch):
         answer = summary.ConversationSummary(
+            title="Gerunds",
             general="A conversation about gerunds.",
             topics=["gerunds", "verb forms"],
             questions="The reader asked what a gerund is.",
@@ -345,6 +346,7 @@ class TestWhatAFinishedChatLeavesBehind:
     @pytest.fixture
     def summarising(self, monkeypatch):
         answer = summary.ConversationSummary(
+            title="Gerunds",
             general="A conversation about gerunds.",
             topics=["gerunds"],
             questions="The reader asked what a gerund is.",
@@ -408,3 +410,158 @@ class TestWhatAFinishedChatLeavesBehind:
         configured.post(f"/api/chats/{chat}/summarize")
 
         assert len(configured.get(f"/api/chats/{chat}").json()["messages"]) == 2
+
+
+class TestEveryChatHasANote:
+    """
+    A conversation and a note are two faces of one thing.
+
+    The binding exists from the moment the chat does, not from the moment it is
+    finished — which is why the column is `note_id` rather than the old
+    `summary_note_id`. One note has at most one conversation and one
+    conversation has exactly one note.
+    """
+
+    def test_a_chat_started_from_nothing_gets_a_note(self, client):
+        body = client.post("/api/chats", json={}).json()
+
+        assert body["note_id"] is not None
+        assert client.get(f"/api/notes/{body['note_id']}").status_code == 200
+
+    def test_a_chat_can_be_started_from_a_note(self, client):
+        note = client.post(
+            "/api/notes", json={"title": "Tides", "content": "The moon pulls."}
+        ).json()
+
+        body = client.post("/api/chats", json={"note_id": note["id"]}).json()
+
+        assert body["note_id"] == note["id"]
+
+    def test_the_note_s_text_seeds_the_conversation(self, client):
+        note = client.post(
+            "/api/notes", json={"title": "Tides", "content": "The moon pulls."}
+        ).json()
+
+        body = client.post("/api/chats", json={"note_id": note["id"]}).json()
+
+        assert [m["role"] for m in body["messages"]] == ["system"]
+        assert "The moon pulls." in body["messages"][0]["content"]
+
+    def test_an_empty_note_seeds_nothing(self, client):
+        """Nothing to say about it yet is not context, it is an empty message."""
+        note = client.post("/api/notes", json={"title": "Untitled", "content": ""}).json()
+
+        body = client.post("/api/chats", json={"note_id": note["id"]}).json()
+
+        assert body["messages"] == []
+
+    def test_asking_again_gives_back_the_same_conversation(self, client):
+        """
+        The first time a note becomes a chat it is seeded; every time after, it
+        is simply opened. One note, one thread, permanently — so a second ask
+        must not make a second conversation and must not re-inject the note.
+        """
+        note = client.post(
+            "/api/notes", json={"title": "Tides", "content": "The moon pulls."}
+        ).json()
+        first = client.post("/api/chats", json={"note_id": note["id"]}).json()
+
+        second = client.post("/api/chats", json={"note_id": note["id"]}).json()
+
+        assert second["id"] == first["id"]
+        assert [m["role"] for m in second["messages"]] == ["system"]
+
+    def test_a_note_that_has_moved_on_is_not_re_injected(self, client):
+        """The context is what the note said when the conversation started."""
+        note = client.post(
+            "/api/notes", json={"title": "Tides", "content": "The moon pulls."}
+        ).json()
+        client.post("/api/chats", json={"note_id": note["id"]})
+        client.put(f"/api/notes/{note['id']}", json={"content": "Something else."})
+
+        again = client.post("/api/chats", json={"note_id": note["id"]}).json()
+
+        assert "The moon pulls." in again["messages"][0]["content"]
+        assert len(again["messages"]) == 1
+
+    def test_another_account_s_note_cannot_be_used(self, client, other_client):
+        note = client.post("/api/notes", json={"title": "Mine", "content": "x"}).json()
+
+        assert (
+            other_client.post("/api/chats", json={"note_id": note["id"]}).status_code
+            == 404
+        )
+
+    def test_the_seeded_context_reaches_the_provider(self, configured, answering):
+        note = configured.post(
+            "/api/notes", json={"title": "Tides", "content": "The moon pulls."}
+        ).json()
+        chat = configured.post("/api/chats", json={"note_id": note["id"]}).json()["id"]
+
+        send(configured, chat)
+
+        roles = [role for role, _ in answering[-1]["turns"]]
+        assert roles == ["system", "user"]
+
+
+class TestFinishingWritesIntoTheBoundNote:
+    @pytest.fixture
+    def summarising(self, monkeypatch):
+        def fake(*args):
+            return summary.ConversationSummary(
+                general="Tides and the moon.",
+                topics=["tides"],
+                questions="How they work.",
+                answers="Sun and moon in line.",
+                title="Spring tides",
+            )
+
+        monkeypatch.setattr("app.api.chats.conversation_summary.summarize", fake)
+
+    def test_the_summary_lands_in_the_chat_s_own_note(
+        self, configured, answering, summarising
+    ):
+        chat = configured.post("/api/chats", json={}).json()
+        send(configured, chat["id"])
+
+        configured.post(f"/api/chats/{chat['id']}/summarize")
+
+        note = configured.get(f"/api/notes/{chat['note_id']}").json()
+        assert "Tides and the moon." in note["content"]
+
+    def test_summarising_twice_leaves_one_note(self, configured, answering, summarising):
+        before = len(configured.get("/api/notes").json())
+        chat = configured.post("/api/chats", json={}).json()["id"]
+        send(configured, chat)
+
+        configured.post(f"/api/chats/{chat}/summarize")
+        configured.post(f"/api/chats/{chat}/summarize")
+
+        assert len(configured.get("/api/notes").json()) == before + 1
+
+    def test_the_suggested_title_names_an_unnamed_note(
+        self, configured, answering, summarising
+    ):
+        chat = configured.post("/api/chats", json={}).json()
+        send(configured, chat["id"])
+
+        configured.post(f"/api/chats/{chat['id']}/summarize")
+
+        assert configured.get(f"/api/notes/{chat['note_id']}").json()["title"] == (
+            "Spring tides"
+        )
+
+    def test_a_title_you_wrote_is_not_overwritten(
+        self, configured, answering, summarising
+    ):
+        note = configured.post(
+            "/api/notes", json={"title": "My own name for this", "content": "x"}
+        ).json()
+        chat = configured.post("/api/chats", json={"note_id": note["id"]}).json()["id"]
+        send(configured, chat)
+
+        configured.post(f"/api/chats/{chat}/summarize")
+
+        assert configured.get(f"/api/notes/{note['id']}").json()["title"] == (
+            "My own name for this"
+        )

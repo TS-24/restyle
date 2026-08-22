@@ -281,11 +281,22 @@ def to_messages(turns: Sequence[tuple[str, str]]):
 
     Takes role/content pairs rather than ORM rows so it stays a pure function
     with nothing to set up — the route unpacks `chat.messages` on the way in.
+
+    A `system` turn is context the conversation was started from — the text of
+    the note it belongs to — and it is folded into the leading system message
+    rather than appended where it sits. Providers do not all accept a system
+    message part-way through a conversation; Anthropic takes system as a
+    top-level argument and has nowhere to put a second one. Folding also keeps
+    the ordering honest: this is the ground the whole exchange stands on, not a
+    turn somebody took in the middle of it.
     """
     from langchain_core.messages import AIMessage, HumanMessage, SystemMessage
 
-    messages = [SystemMessage(content=SYSTEM_PROMPT)]
+    context = [content for role, content in turns if role == "system"]
+    messages = [SystemMessage(content="\n\n".join([SYSTEM_PROMPT, *context]))]
     for role, content in turns:
+        if role == "system":
+            continue
         if role == "user":
             messages.append(HumanMessage(content=content))
         elif role == "assistant":

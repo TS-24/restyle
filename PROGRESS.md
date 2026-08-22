@@ -501,6 +501,25 @@ Each of these cost real time. They are all commented at the site too.
     The price is that a note edited in another tab does not appear until the
     next mutation. That trade was made on purpose.
 
+36. **A migration that ALTERs a constraint must use `batch_alter_table`, and
+    nothing in CI will tell you.** SQLite cannot alter a constraint at all, so
+    `op.create_foreign_key` / `op.create_unique_constraint` outside batch mode
+    raise `NotImplementedError` there. Nothing catches it: the test suite builds
+    its schema with `create_all` (trap 25) and the migrations job only runs
+    Postgres, where the plain call works. `d8c25a71f3b0` shipped broken this way
+    and `alembic upgrade head` on SQLite failed on it and nowhere else. Batch
+    mode costs nothing on Postgres — it issues the same direct DDL.
+
+37. **In batch mode, a constraint added in the same pass as a rename goes
+    missing without complaint.** SQLite's batch mode recreates the table from
+    what it reflected at the start of the block, so a `create_unique_constraint`
+    sharing a block with `alter_column(new_column_name=...)` is written against
+    a column the reflected schema does not have yet. The upgrade reports
+    success, the constraint is simply absent, and the first thing to notice is
+    the *downgrade* failing with "No such constraint". Split the rename and
+    anything that references the new name into two `batch_alter_table` blocks —
+    see `e7d41a20c9b8`.
+
 ---
 
 ## 5. Conventions

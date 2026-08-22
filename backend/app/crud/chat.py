@@ -19,13 +19,38 @@ from ..db.models import Chat, ChatMessage
 UNTITLED = "Untitled"
 
 
-def create_chat(db: Session, user_id: int) -> Chat:
-    """Start an empty conversation owned by this user."""
-    chat = Chat(user_id=user_id, title=UNTITLED)
+def create_chat(
+    db: Session, user_id: int, note_id: int, seed: str | None = None
+) -> Chat:
+    """Start a conversation bound to a note, optionally seeded from its text.
+
+    The binding is required, not optional: every chat has a note, and the one
+    place chats are born is the one place that can be true. The caller supplies
+    the note — either the one the reader started from, or one made for the
+    occasion.
+
+    `seed` is stored as a `system` turn, which is the note's text at the moment
+    the conversation began. It is written once here and never rewritten: opening
+    the chat again is opening a conversation that already has a history, not
+    starting it over from a note that has since moved on.
+    """
+    chat = Chat(user_id=user_id, title=UNTITLED, note_id=note_id)
+    if seed:
+        chat.messages.append(ChatMessage(role="system", content=seed))
     db.add(chat)
     db.commit()
     db.refresh(chat)
     return chat
+
+
+def chat_for_note(db: Session, note_id: int, user_id: int) -> Chat | None:
+    """This note's conversation, if it has one. The binding is one-to-one."""
+    stmt = (
+        select(Chat)
+        .where(Chat.note_id == note_id, Chat.user_id == user_id)
+        .options(selectinload(Chat.messages))
+    )
+    return db.scalars(stmt).first()
 
 
 def get_chat(db: Session, chat_id: int, user_id: int) -> Chat | None:
@@ -110,21 +135,20 @@ def title_from(question: str) -> str:
     return f"{spaced if len(spaced) > 40 else cut}…"
 
 
-def store_summary(db: Session, chat: Chat, summary, note_id: int | None = None) -> Chat:
+def store_summary(db: Session, chat: Chat, summary) -> Chat:
     """
     Write all three parts of the summary, or none of them.
 
     One assignment block and one commit: a chat with a general summary and no
     questions section is a state the schema permits and nothing should create.
 
-    `note_id` joins the note the summary was written into, which is what the
-    library shows in this conversation's place.
+    Nothing here touches `note_id`: the note this was written into was decided
+    when the conversation started, not now.
     """
     chat.summary_general = summary.general
     chat.summary_topics = list(summary.topics)
     chat.summary_questions = summary.questions
     chat.summary_answers = summary.answers
-    chat.summary_note_id = note_id
     chat.summarized_at = datetime.now(timezone.utc)
     db.commit()
     db.refresh(chat)

@@ -66,7 +66,13 @@ export interface VocabularyAnalysisResponse {
 /** Mirrors backend/app/schemas/chat.py::ChatMessageRead */
 export interface ChatMessage {
   id: number;
-  role: "user" | "assistant";
+  /**
+   * "system" is the note's text as it stood when the conversation began — a
+   * turn nobody took. It is a role of its own rather than a user message so the
+   * transcript can show it as where the conversation started rather than as
+   * something the reader said.
+   */
+  role: "user" | "assistant" | "system";
   content: string;
   created_at: string;
 }
@@ -96,6 +102,13 @@ export interface Chat {
   title: string;
   created_at: string;
   updated_at: string;
+  /**
+   * The note this conversation is two faces of: what it is summarised into when
+   * it finishes, and what its text was seeded from if it began at a note. Set
+   * from the moment the chat exists. Null only for conversations from before
+   * the binding, which are not backfilled.
+   */
+  note_id: number | null;
   messages: ChatMessage[];
   /**
    * Null until the conversation is finished. This is the only test for

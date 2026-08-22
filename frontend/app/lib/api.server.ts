@@ -159,9 +159,19 @@ export const api = {
 
   getChat: (token: string, id: number) => request<Chat>(`/api/chats/${id}`, token),
 
-  /** Starts an empty conversation. A key is not needed until the first message. */
-  createChat: (token: string) =>
-    request<Chat>("/api/chats", token, { method: "POST", body: "{}" }),
+  /**
+   * Starts a conversation. A key is not needed until the first message.
+   *
+   * With a note, the conversation is bound to it and seeded from its text —
+   * and asking twice gives back the one that already exists, because the
+   * binding is one-to-one. Without one, the backend makes a note for it: a
+   * chat with no note is a state this app does not have.
+   */
+  createChat: (token: string, noteId?: number) =>
+    request<Chat>("/api/chats", token, {
+      method: "POST",
+      body: JSON.stringify({ note_id: noteId ?? null }),
+    }),
 
   deleteChat: (token: string, id: number) =>
     request<void>(`/api/chats/${id}`, token, { method: "DELETE" }),

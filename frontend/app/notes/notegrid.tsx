@@ -341,10 +341,12 @@ export default function Notegrid({
   const gridNotes = notes.filter(n => n.id !== openNoteId);
   const pinnedNotes = gridNotes.filter(n => n.is_pinned);
   // A finished conversation is shown as the note it wrote, not as a second card
-  // saying the same thing. Keyed on `note_id` rather than on `summary` so that
-  // chats summarised before notes were written keep their card — there is no
-  // note to show in their place.
-  const liveChats = chats.filter(c => !c.summary?.note_id);
+  // saying the same thing. Both halves of that test matter now that every chat
+  // is bound to a note from the moment it exists: an unfinished one has a note
+  // too, and it is the conversation you want to see, not an empty note. And a
+  // chat finished before the binding has no note to stand in for it, so it
+  // keeps its card rather than vanishing.
+  const liveChats = chats.filter(c => !c.summary || c.note_id === null);
   const gridChats = openChatId ? liveChats.filter(c => c.id !== openChatId) : liveChats;
   // Interleaved by when they were last touched, not grouped by kind: the
   // library is a record of what you were working on, and splitting it into a

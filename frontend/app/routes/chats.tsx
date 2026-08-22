@@ -18,9 +18,16 @@ export async function action({ request }: Route.ActionArgs) {
   try {
     switch (intent) {
       case "create": {
-        // The id comes back so the ghost card can open what it just made, the
-        // same handshake the new-note ghost uses.
-        const created = await api.createChat(token);
+        // The id comes back so the caller can open what it just made, the same
+        // handshake the new-note ghost uses. `noteId` is set when the request
+        // came from a note rather than from the library — in which case the id
+        // may well be a conversation that already existed, since one note has
+        // one thread.
+        const noteId = Number(formData.get("noteId"));
+        const created = await api.createChat(
+          token,
+          Number.isFinite(noteId) && noteId > 0 ? noteId : undefined,
+        );
         return { ok: true, id: created.id };
       }
       case "delete": {

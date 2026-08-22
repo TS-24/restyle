@@ -97,6 +97,13 @@ class Note(Base):
     )
     user_id: Mapped[int] = mapped_column(ForeignKey("users.id"))
     author: Mapped["User"] = relationship(back_populates="notes")
+    # Reserved for the hierarchy, and read by nothing yet. It is here so that
+    # work is a feature on top of the schema rather than a migration through it
+    # — adding a self-reference to a table this central is the expensive half,
+    # and doing it now costs one nullable column.
+    parent_id: Mapped[Optional[int]] = mapped_column(
+        ForeignKey("notes.id"), nullable=True, index=True
+    )
 
     words: Mapped[List["WordDefinition"]] = relationship(
         secondary=note_word_association, back_populates="notes"
@@ -322,12 +329,19 @@ class Chat(Base):
     summary_questions: Mapped[Optional[str]] = mapped_column(Text)
     summary_answers: Mapped[Optional[str]] = mapped_column(Text)
     summarized_at: Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=True))
-    # The note this summary was written into. Finishing a conversation leaves a
-    # note behind, and the library shows that note in the chat's place; this is
-    # what says which one, and what stops a re-summarise writing a second.
-    # Nullable because chats summarised before notes were written have none —
-    # those keep their card, since there is nothing to show instead.
-    summary_note_id: Mapped[Optional[int]] = mapped_column(ForeignKey("notes.id"))
+    # The note this conversation is bound to, from the moment the conversation
+    # exists — not from the moment it is finished, which is what the old
+    # `summary_note_id` meant. A note and a chat are two faces of one thing: the
+    # note is what a finished conversation is summarised into, and the note's
+    # text is what an unfinished one was started from.
+    #
+    # Unique, so the binding is genuinely one-to-one and a note can never end up
+    # with two threads disagreeing about it. Nullable because conversations from
+    # before this have no note and are not backfilled; the null path stays
+    # supported rather than being guessed at from a migration.
+    note_id: Mapped[Optional[int]] = mapped_column(
+        ForeignKey("notes.id"), unique=True
+    )
 
     # Ordered by id rather than created_at: a question and its answer are
     # written in the same transaction and can share a timestamp, and a

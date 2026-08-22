@@ -4,7 +4,7 @@ import {
   useRef,
   useState,
 } from "react";
-import { useFetcher, useNavigate } from "react-router";
+import { Link, useFetcher, useNavigate } from "react-router";
 import { motion } from "framer-motion";
 import { CornerDownLeft, Sparkles } from "lucide-react";
 
@@ -85,6 +85,18 @@ export default function ChatSurface({
           ],
         }
       : chat;
+
+  /*
+    The note this conversation was started from, and the turns actually taken.
+
+    The seed is stored as a `system` message so the provider and the summariser
+    both see it — see backend/app/services/llm.py, which folds it into the
+    leading system prompt. It is not a turn, though: rendering it would show the
+    reader their own note pasted back as the thing they opened with, and a long
+    note would fill the conversation before it began.
+  */
+  const seed = shown.messages.find(message => message.role === "system") ?? null;
+  const turns = shown.messages.filter(message => message.role !== "system");
 
   const landed = chat.messages.filter(message => message.id > 0).length;
   const sentCount = useRef(landed);
@@ -218,7 +230,25 @@ export default function ChatSurface({
           {chat.title}
         </h1>
 
-        {chat.messages.length === 0 && !pending ? (
+        {/*
+          Where this started — one serif line at Meta size, the house form for
+          an aside (DESIGN.md §8). It answers the question a reader has the
+          moment they open a conversation from a note and find it empty: was
+          the note actually taken along?
+        */}
+        {seed && chat.note_id !== null && (
+          <p className="mt-4 text-center text-sm italic text-ink/45">
+            Started from{" "}
+            <Link
+              to={`/notes?open=${chat.note_id}`}
+              className="tracking-wide not-italic text-ink/55 transition-colors hover:text-ink"
+            >
+              your note →
+            </Link>
+          </p>
+        )}
+
+        {turns.length === 0 && !pending ? (
           <p className="mt-8 flex flex-1 items-center justify-center text-lg italic text-ink/40">
             Ask something.
           </p>
@@ -227,7 +257,7 @@ export default function ChatSurface({
             <MessageScroller className="mt-8 flex flex-1 flex-col overflow-hidden">
               <MessageScrollerViewport style={{ maxHeight: "46vh" }}>
                 <MessageScrollerContent className="gap-6">
-                  {shown.messages.map(message => (
+                  {turns.map(message => (
                     <MessageScrollerItem
                       key={message.id}
                       messageId={`msg-${message.id}`}
@@ -275,8 +305,17 @@ export default function ChatSurface({
 
         {finished ? (
           <p className="mt-8 text-center text-base italic text-ink/50">
-            This conversation is finished. What it came to is a note in your
-            library.
+            This conversation is finished. What it came to is{" "}
+            {chat.note_id !== null ? (
+              <Link
+                to={`/notes?open=${chat.note_id}`}
+                className="not-italic tracking-wide text-ink/70 transition-colors hover:text-ink"
+              >
+                a note in your library →
+              </Link>
+            ) : (
+              "a note in your library."
+            )}
           </p>
         ) : (
           <div className="mt-8 w-full">

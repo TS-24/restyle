@@ -20,13 +20,20 @@ from ..crud import note as crud_note
 from ..crud import provider_credential as crud_credential
 from ..db.database import get_db
 from ..db.models import Chat, User
-from ..schemas.chat import ChatMessageCreate, ChatRead, ChatSummaryRead
+from ..schemas.chat import ChatCreate, ChatMessageCreate, ChatRead, ChatSummaryRead
 from ..services import conversation_summary, llm
 from .deps import get_current_user
 
 router = APIRouter(prefix="/chats", tags=["chats"])
 
 NOT_FOUND = HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Chat not found")
+
+# Same shape and same reason as NOT_FOUND: a different answer for "that note is
+# somebody else's" would turn the id space into a directory of other people's
+# notes.
+NOTE_NOT_FOUND = HTTPException(
+    status_code=status.HTTP_404_NOT_FOUND, detail="Note not found"
+)
 
 NO_CREDENTIAL = HTTPException(
     status_code=status.HTTP_409_CONFLICT,
@@ -77,23 +84,69 @@ def _read(chat: Chat) -> ChatRead:
             questions=chat.summary_questions or "",
             answers=chat.summary_answers or "",
             summarized_at=chat.summarized_at,
-            note_id=chat.summary_note_id,
+            note_id=chat.note_id,
         )
     return body
 
 
+def _seed_from(note) -> str | None:
+    """A note as the context its conversation starts from.
+
+    The title is included because it is often the only statement of the subject
+    — a note called "Tides" whose body is three fragments says more with its
+    name than without it. A note with nothing in it seeds nothing: an empty
+    message is not context, and the model would be answering a blank page.
+    """
+    parts = [part for part in (note.title, note.content) if part and part.strip()]
+    if not parts or parts == [crud_chat.UNTITLED]:
+        return None
+    body = "\n\n".join(parts)
+    return f"The reader started this conversation from a note of theirs:\n\n{body}"
+
+
 @router.post("", response_model=ChatRead, status_code=status.HTTP_201_CREATED)
 def create_chat(
-    db: Session = Depends(get_db), current_user: User = Depends(get_current_user)
+    payload: ChatCreate | None = None,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
 ) -> ChatRead:
-    """Start an empty conversation.
+    """Start a conversation, bound to a note.
+
+    Every chat has a note. This is the one place chats are born, so it is the
+    one place that invariant can be enforced. Started from the library, a note
+    is made for it; started from a note, that note is the one.
+
+    Starting from a note a second time is not starting anything: the binding is
+    one-to-one, so the conversation that already exists is handed back
+    unchanged. That is what makes the note's text *context* rather than a
+    preamble repeated on every visit — it was injected once, when there was no
+    conversation to inject it into.
 
     No credential check: a chat can be started before a key exists, and the
     refusal belongs on the first thing said rather than on the button that opens
     the page. Getting that backwards would mean the reader could not even see
     the surface they are being told to configure.
     """
-    return _read(crud_chat.create_chat(db, user_id=current_user.id))
+    note_id = payload.note_id if payload else None
+    if note_id is None:
+        # Nothing to be about yet, so it gets somewhere to end up. Untitled is
+        # the placeholder a new note gets from the library too.
+        note = crud_note.create_note(
+            db, user_id=current_user.id, title=crud_chat.UNTITLED, content=""
+        )
+        return _read(crud_chat.create_chat(db, current_user.id, note.id))
+
+    note = crud_note.get_note(db, note_id, current_user.id)
+    if note is None:
+        raise NOTE_NOT_FOUND
+
+    existing = crud_chat.chat_for_note(db, note.id, current_user.id)
+    if existing is not None:
+        return _read(existing)
+
+    return _read(
+        crud_chat.create_chat(db, current_user.id, note.id, seed=_seed_from(note))
+    )
 
 
 @router.get("", response_model=list[ChatRead])
@@ -173,6 +226,20 @@ def send_message(
     return _read(crud_chat.add_exchange(db, chat, payload.content, answer))
 
 
+def _named_by(summary, note) -> str:
+    """The note's title after a summary: the suggestion, or the one it has.
+
+    A name the reader typed is theirs and is not overwritten by a model's guess
+    — even a better one. Only a note still carrying a placeholder takes the
+    suggestion, which is exactly the case a chat started from the library
+    produces: a note called "Untitled" with the conversation's text in it.
+    """
+    suggested = (summary.title or "").strip()
+    if not suggested:
+        return note.title
+    return suggested if note.title.strip() in ("", crud_chat.UNTITLED) else note.title
+
+
 @router.post("/{chat_id}/summarize", response_model=ChatRead)
 def summarize_chat(
     chat_id: int,
@@ -209,24 +276,23 @@ def summarize_chat(
     # What the reader keeps is a note, not a card: the summary becomes the text
     # of a real one so it can be corrected, added to and pinned like anything
     # else they wrote. The transcript stays where it is.
-    content = conversation_summary.as_note(summary)
-    existing = (
-        crud_note.get_note(db, chat.summary_note_id, current_user.id)
-        if chat.summary_note_id is not None
+    #
+    # The note is the one this conversation has been bound to all along, so
+    # there is nothing to decide here and no way to write a second. Only a chat
+    # from before the binding has none, and those are left alone rather than
+    # backfilled.
+    note = (
+        crud_note.get_note(db, chat.note_id, current_user.id)
+        if chat.note_id is not None
         else None
     )
-    if existing is not None:
-        # Re-summarising is the retry path for a poor first attempt, so it
-        # corrects the note already written. A second note would leave the
-        # library holding two for one conversation — one of them the summary
-        # the reader was retrying to be rid of.
+    if note is not None:
         crud_note.update_note(
-            db, existing.id, current_user.id, title=chat.title, content=content
+            db,
+            note.id,
+            current_user.id,
+            title=_named_by(summary, note),
+            content=conversation_summary.as_note(summary),
         )
-        note_id = existing.id
-    else:
-        note_id = crud_note.create_note(
-            db, user_id=current_user.id, title=chat.title, content=content
-        ).id
 
-    return _read(crud_chat.store_summary(db, chat, summary, note_id))
+    return _read(crud_chat.store_summary(db, chat, summary))
