@@ -104,11 +104,13 @@ export default function Workspace({ loaderData }: Route.ComponentProps) {
     ? (notes[0] ?? null)
     : (notes.find(n => n.id === openId) ?? null);
 
-  // A note written by finishing a conversation keeps a way back to it. The
-  // chats are already loaded, so this is a lookup rather than a fetch.
-  const cameFrom =
+  // The conversation this note is bound to, if it has one — which is both the
+  // way back from a note a chat was summarised into and the way on from a note
+  // you have already talked about. One note has one thread, so this is a lookup
+  // over the chats the loader already returned rather than a fetch.
+  const boundChat =
     focused
-      ? (loaderData.chats.find(c => c.summary?.note_id === focused.id)?.id ?? null)
+      ? (loaderData.chats.find(c => c.note_id === focused.id)?.id ?? null)
       : null;
 
   // Opening a note counts as an update, so it becomes "where you left off".
@@ -173,7 +175,7 @@ export default function Workspace({ loaderData }: Route.ComponentProps) {
           key={focused.id}
           note={focused}
           mode={onLanding ? "page" : "boxed"}
-          conversationId={cameFrom}
+          conversationId={boundChat}
           onOpen={() => navigate(`/notes?open=${focused.id}`)}
           onClose={() => navigate("/notes", { replace: true })}
           onReturn={() => navigate("/")}

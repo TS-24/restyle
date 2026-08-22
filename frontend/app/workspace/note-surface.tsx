@@ -5,7 +5,7 @@ import {
   useRef,
   useState,
 } from "react";
-import { Link, useFetcher } from "react-router";
+import { useFetcher, useNavigate } from "react-router";
 import { motion, useReducedMotion } from "framer-motion";
 import { MessagesSquare } from "lucide-react";
 import WordRoller from "~/workspace/word-roller";
@@ -210,10 +210,16 @@ export default function NoteSurface({
   onClose: () => void;
   /** Boxed only: take the note back out to its own page. */
   onReturn: () => void;
-  /** Set when this note is what finishing a conversation wrote. */
+  /**
+   * The conversation this note is bound to, if it has one. One note has one
+   * thread, permanently — so this is both "what finishing a conversation
+   * wrote" and "what talking about this note continues".
+   */
   conversationId?: number | null;
 }) {
   const fetcher = useFetcher();
+  const chatStarter = useFetcher<{ ok: boolean; id?: number }>();
+  const navigate = useNavigate();
   const [title, setTitle] = useState(note.title);
   const [content, setContent] = useState(note.content ?? "");
   const rootRef = useRef<HTMLDivElement>(null);
@@ -291,6 +297,7 @@ export default function NoteSurface({
   }, [boxed, titleField.track, bodyField.track]);
 
   const saved = useRef({ title: note.title, content: note.content ?? "" });
+  /** True when this actually sent something, so a caller can wait for it. */
   const save = () => {
     const nextTitle = title.trim();
     const nextContent = content.trim();
@@ -298,7 +305,7 @@ export default function NoteSurface({
       nextTitle === saved.current.title.trim() &&
       nextContent === saved.current.content.trim()
     ) {
-      return;
+      return false;
     }
     saved.current = { title: nextTitle, content: nextContent };
     fetcher.submit(
@@ -310,6 +317,56 @@ export default function NoteSurface({
       },
       { method: "post", action: "/notes" },
     );
+    return true;
+  };
+
+  /*
+    Talking about the note, in the one direction that is not summarising.
+
+    A conversation becomes a note by being summarised into it. A note becomes a
+    conversation by seeding one — once, from the note's text. After that this
+    button is simply the way back: the thread has its own history by then, and
+    putting the note in front of it again would be re-opening with a preamble
+    the exchange has already moved past.
+
+    The seed is read from the *stored* note, server-side, so an edit still
+    sitting in the field has to land before the conversation is asked for. That
+    is what `pendingStart` is waiting on — the alternative is a conversation
+    whose context is the paragraph you had just finished replacing.
+  */
+  const beginChat = () => {
+    chatStarter.submit(
+      { intent: "create", noteId: String(note.id) },
+      { method: "post", action: "/chats" },
+    );
+  };
+
+  const pendingStart = useRef(false);
+  useEffect(() => {
+    if (!pendingStart.current || fetcher.state !== "idle") return;
+    pendingStart.current = false;
+    beginChat();
+  });
+
+  const openedChat = useRef(false);
+  useEffect(() => {
+    const id = chatStarter.data?.id;
+    if (chatStarter.state !== "idle" || !id || openedChat.current) return;
+    openedChat.current = true;
+    navigate(`/chats/${id}`);
+  }, [chatStarter.state, chatStarter.data, navigate]);
+
+  const talkAboutThis = () => {
+    if (conversationId !== null) {
+      save();
+      navigate(`/chats/${conversationId}`);
+      return;
+    }
+    if (save()) {
+      pendingStart.current = true;
+      return;
+    }
+    beginChat();
   };
 
   /**
@@ -608,31 +665,33 @@ export default function NoteSurface({
           <span className="text-sm italic text-ink/40">
             Esc to close · Enter for a new line
           </span>
-          {/* The house form for an exit: one serif line at Meta size
-              (DESIGN.md §8), not a button competing with the one opposite. */}
-          {conversationId !== null && (
-            <Link
-              to={`/chats/${conversationId}`}
-              className="text-sm tracking-wide text-ink/50 transition-colors hover:text-ink"
-            >
-              See the conversation →
-            </Link>
-          )}
         </div>
         {/*
-          A placeholder, deliberately: it says what it will do and does not do it
-          yet. "Done" stood here and went unused — Escape and a click outside
-          both close the note, so the button was a third way to do what two
-          gestures already did.
+          The one thing you can do to a note that is not writing in it.
+
+          It used to be a placeholder, and before that it said "Done" and went
+          unused — Escape and a click outside both close the note, so that was a
+          third way to do what two gestures already did. This is not: it is the
+          only way from a note to its conversation.
+
+          The label follows the state rather than being one word for two
+          different acts. Starting a thread and rejoining one are not the same
+          promise, and a note that already has a conversation is not somewhere
+          you can start a second.
+
+          The quiet "See the conversation →" link that sat opposite is gone with
+          it: it went exactly where this button goes, in exactly the case this
+          button says "Continue in chat".
         */}
         <button
           type="button"
+          onClick={talkAboutThis}
           aria-hidden={!boxed}
           tabIndex={boxed ? 0 : -1}
           className="flex items-center gap-2 rounded-xl bg-accent px-5 py-2 text-base text-on-accent transition-opacity hover:opacity-90 cursor-pointer"
         >
           <MessagesSquare className="size-4" />
-          Chat about this
+          {conversationId !== null ? "Continue in chat" : "Chat about this"}
         </button>
       </div>
     </motion.div>

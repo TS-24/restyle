@@ -14,11 +14,26 @@ class ChatMessageCreate(BaseModel):
     content: Content
 
 
+class ChatCreate(BaseModel):
+    """Which note the conversation is about, when the reader started from one.
+
+    Omitted when the conversation is started from the library instead — the
+    route makes a note for it, because a chat without one is a state this app
+    does not have.
+    """
+
+    note_id: int | None = None
+
+
 class ChatMessageRead(BaseModel):
     model_config = ConfigDict(from_attributes=True)
 
     id: int
-    role: Literal["user", "assistant"]
+    # "system" is the note's text as it stood when the conversation began. It is
+    # a turn nobody took, which is why it is a role of its own rather than a
+    # user message: the transcript shows it as where the conversation started,
+    # not as something the reader said.
+    role: Literal["user", "assistant", "system"]
     content: str
     created_at: datetime
 
@@ -38,8 +53,10 @@ class ChatSummaryRead(BaseModel):
     questions: str
     answers: str
     summarized_at: datetime
-    # Which note this summary became. Null only for conversations finished
-    # before that existed.
+    # Kept alongside `ChatRead.note_id`, which is now where the binding lives.
+    # A client mid-deploy may still be reading it, and the two are the same
+    # number — the note a summary is written into is the note the conversation
+    # was bound to all along.
     note_id: int | None = None
 
 
@@ -51,6 +68,10 @@ class ChatRead(BaseModel):
     title: str
     created_at: datetime
     updated_at: datetime
+    # The note this conversation is two faces of. Set from the moment the chat
+    # exists; null only for conversations from before the binding, which are not
+    # backfilled.
+    note_id: int | None = None
     messages: list[ChatMessageRead] = []
     # Null until the chat is finished. This is what "finished" means to a
     # caller — there is no status field to consult instead.

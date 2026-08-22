@@ -38,11 +38,21 @@ depends_on: Union[str, Sequence[str], None] = None
 FK = "fk_chats_summary_note_id_notes"
 
 
+# batch_alter_table because SQLite cannot ALTER a constraint at all, and the
+# desktop build ships SQLite. Written without it first, which nothing caught:
+# the suite builds its schema with create_all and CI only runs migrations
+# against Postgres, so `alembic upgrade head` on SQLite failed here and nowhere
+# else. On Postgres batch mode issues the same direct DDL, so this changes
+# nothing there.
+
+
 def upgrade() -> None:
-    op.add_column("chats", sa.Column("summary_note_id", sa.Integer(), nullable=True))
-    op.create_foreign_key(FK, "chats", "notes", ["summary_note_id"], ["id"])
+    with op.batch_alter_table("chats") as batch:
+        batch.add_column(sa.Column("summary_note_id", sa.Integer(), nullable=True))
+        batch.create_foreign_key(FK, "notes", ["summary_note_id"], ["id"])
 
 
 def downgrade() -> None:
-    op.drop_constraint(FK, "chats", type_="foreignkey")
-    op.drop_column("chats", "summary_note_id")
+    with op.batch_alter_table("chats") as batch:
+        batch.drop_constraint(FK, type_="foreignkey")
+        batch.drop_column("summary_note_id")

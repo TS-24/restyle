@@ -41,10 +41,11 @@ const note = (id: number, title: string): Note => ({
   words: [],
 });
 
-const chat = (id: number, title: string): Chat => ({
+const chat = (id: number, title: string, noteId: number | null = 100 + id): Chat => ({
   id,
   user_id: 1,
   title,
+  note_id: noteId,
   messages: [],
   summary: null,
   created_at: NOW,
@@ -131,9 +132,21 @@ test("a chat card and the chat surface share one layout id", () => {
  * to show instead, so they keep their card — hence the test is on `note_id`,
  * not on `summary`.
  */
+/**
+ * Every conversation is bound to a note from the moment it exists, so having
+ * one is no longer what says a chat is done. An unfinished chat's note is
+ * empty; it is the conversation you want to see, not the blank page behind it.
+ */
+test("a live conversation keeps its card even though it has a note", () => {
+  const { container } = mount([], [chat(6, "Still going", 106)]);
+  const titles = [...container.querySelectorAll("h3")].map(h => h.textContent);
+
+  expect(titles).toContain("Still going");
+});
+
 test("a chat that became a note leaves the grid", () => {
   const became = {
-    ...chat(4, "Finished"),
+    ...chat(4, "Finished", 12),
     summary: {
       general: "g",
       topics: [],
@@ -144,7 +157,7 @@ test("a chat that became a note leaves the grid", () => {
     },
   } as Chat;
   const older = {
-    ...chat(5, "Older"),
+    ...chat(5, "Older", null),
     summary: {
       general: "g",
       topics: [],

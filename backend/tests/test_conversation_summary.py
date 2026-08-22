@@ -21,6 +21,7 @@ TURNS = [
 ]
 
 ANSWER = summary.ConversationSummary(
+    title="Affect and effect",
     general="A conversation about two commonly confused words.",
     topics=["affect vs effect", "verb and noun senses"],
     questions="The reader asked how to tell two similar words apart.",
@@ -29,6 +30,16 @@ ANSWER = summary.ConversationSummary(
 
 
 class TestTheTranscriptItSends:
+    def test_it_names_the_note_a_conversation_started_from(self):
+        """
+        A summariser that has not seen the note describes the replies without
+        knowing what they were replying about — and for a chat opened from a
+        note, that context is often the only statement of the subject.
+        """
+        text = summary.transcript([("system", "The moon pulls."), *TURNS])
+
+        assert "From your note: The moon pulls." in text
+
     def test_it_labels_both_speakers(self):
         transcript = summary.transcript(TURNS)
 
@@ -137,6 +148,7 @@ class TestAsNote:
 
     def _summary(self, **over):
         base = dict(
+            title="Gerunds",
             general="A conversation about gerunds.",
             topics=["gerunds", "verb forms"],
             questions="The reader asked what a gerund is.",

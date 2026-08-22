@@ -34,7 +34,7 @@ from . import llm
 
 INSTRUCTION = (
     "Below is a finished conversation between a reader and an assistant. "
-    "Summarise it in three parts:\n"
+    "Give it a short title, then summarise it in three parts:\n"
     "1. What the conversation was about overall, plus the distinct topics it "
     "covered.\n"
     "2. The main focus of the reader's questions — what they were trying to "
@@ -49,6 +49,9 @@ INSTRUCTION = (
 class ConversationSummary(BaseModel):
     """The three parts. Field docs are the prompt the provider actually sees."""
 
+    title: str = Field(
+        description="A short name for the conversation, five words at most."
+    )
     general: str = Field(description="What the conversation was about overall.")
     topics: list[str] = Field(description="The distinct topics it covered.")
     questions: str = Field(
@@ -71,6 +74,12 @@ def transcript(turns: Sequence[tuple[str, str]]) -> str:
             lines.append(f"You: {content}")
         elif role == "assistant":
             lines.append(f"Assistant: {content}")
+        elif role == "system":
+            # What the conversation was started from — the note it belongs to.
+            # Labelled rather than dropped: it is often the only statement of
+            # the subject, and a summary that has not seen it describes the
+            # replies without knowing what they were replying about.
+            lines.append(f"From your note: {content}")
         else:
             raise ValueError(f"Unknown role: {role}")
     return "\n\n".join(lines)
