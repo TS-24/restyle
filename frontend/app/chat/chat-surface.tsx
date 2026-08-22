@@ -9,6 +9,7 @@ import { motion } from "framer-motion";
 import { CornerDownLeft, Sparkles } from "lucide-react";
 
 import ModelPicker from "~/chat/model-picker";
+import Markdown from "~/notes/markdown";
 import { NOTE_LAYOUT_TRANSITION } from "~/workspace/note-surface";
 import type { Chat, ProviderSettings } from "~/lib/types";
 import {
@@ -243,8 +244,12 @@ export default function ChatSurface({
                             </Bubble>
                           ) : (
                             <Bubble variant="ghost" className="max-w-none">
-                              <BubbleContent className="max-w-[68ch] text-lg leading-relaxed text-ink/85 whitespace-pre-line">
-                                {message.content}
+                              {/* Rendered: models write markdown whether or not
+                                  anything is listening, so the alternative is
+                                  not plain prose — it is asterisks and hashes
+                                  in the middle of the answer. */}
+                              <BubbleContent className="max-w-[68ch] text-lg leading-relaxed text-ink/85">
+                                <Markdown>{message.content}</Markdown>
                               </BubbleContent>
                             </Bubble>
                           )}

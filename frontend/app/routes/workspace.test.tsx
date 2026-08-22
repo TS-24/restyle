@@ -133,8 +133,9 @@ function mount() {
   return {
     router,
     surface: () => container.querySelector("[role=dialog]"),
-    body: () =>
-      container.querySelector<HTMLTextAreaElement>('textarea[aria-label="Note text"]'),
+    // The note's text as it is shown before anyone writes in it: rendered
+    // markdown, not the field. The field is what a click into it produces.
+    body: () => container.querySelector("[data-note-body]")?.textContent,
   };
 }
 
@@ -152,13 +153,13 @@ test("opens a different note on a different element", async () => {
 
 test("shows the newly opened note's text", async () => {
   const { router, body } = mount();
-  expect(body()?.value).toBe("The text of First.");
+  expect(body()).toContain("The text of First.");
 
   await act(async () => {
     await router.navigate("/notes?open=2");
   });
 
-  expect(body()?.value).toBe("The text of Second.");
+  expect(body()).toContain("The text of Second.");
 });
 
 /**
