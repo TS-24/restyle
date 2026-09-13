@@ -1,7 +1,7 @@
 services:
   frontend:
     build:
-      context: ./frontend
+      context: ./web
       dockerfile: Dockerfile
     ports:
       # Host ports are parameterised and default to a block unique to this

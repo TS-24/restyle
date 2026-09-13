@@ -6,7 +6,7 @@
 #     -f docker-compose.yml -f docker-compose.prod.yml -f docker-compose.deploy.yml \
 #     up -d
 #
-# The base file builds from ./frontend and ./backend. On the server those
+# The base file builds from ./web and ./backend. On the server those
 # directories do not exist — there is no checkout, only this file, the prod
 # overlay, the Caddyfile and .env — so `build` is not merely wasteful here, it
 # is a context compose cannot resolve. `!reset` removes it rather than leaving

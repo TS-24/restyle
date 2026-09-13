@@ -159,7 +159,7 @@ def close_note(db: Session, note: Note) -> bool:
 
     - it is blank;
     - it is not the only note left, because the app has no empty state —
-      frontend/app/routes/workspace.tsx creates a note when the list comes back
+      web/app/routes/workspace.tsx creates a note when the list comes back
       empty, so deleting into that just makes it make another;
     - its conversation, if it has one, never got anywhere. A transcript is the
       note's content even when the body is empty.
