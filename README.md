@@ -58,7 +58,7 @@ See [Project status](#-project-status) for what does not work yet.
 
 ```
 restyle/
-├── frontend/                  # Frontend (React Router v7 + Vite, SSR)
+├── web/                       # Frontend (React Router v7 + Vite, SSR)
 │   ├── Dockerfile             # Multi-stage; the compose image runs react-router-serve
 │   ├── vitest.config.ts       # Separate from vite.config.ts — a unit test wants no
 │   │                          #   route manifest and no server bundle
@@ -117,7 +117,7 @@ This is load-bearing. `PROGRESS.md` records why the alternative was built, tried
 
 ### Tech Stack
 
-**Frontend (`frontend/`)**
+**Frontend (`web/`)**
 - **Framework:** React Router v7 (SSR), React 19, Vite
 - **Language:** TypeScript
 - **Styling:** Tailwind CSS v4, with `shadcn/ui` and Base UI components
@@ -409,7 +409,7 @@ appears to succeed and no session ever exists.
 
 #### On the server, where there is no source
 
-The base file builds from `./frontend` and `./backend`. A deployed host has no
+The base file builds from `./web` and `./backend`. A deployed host has no
 checkout — only the three compose files, the `Caddyfile` and `.env` — so
 `build` there is not merely wasteful, it is a context compose cannot resolve.
 `docker-compose.deploy.yml` removes it and runs published images instead:
@@ -505,7 +505,7 @@ needs at that moment is to be told, loudly, with the sha that was working.
 They run on the host, and these three are exactly what CI runs:
 
 ```bash
-cd frontend
+cd web
 npm run typecheck     # react-router typegen && tsc
 npm test              # vitest run
 npm run build
@@ -522,7 +522,7 @@ worker. To reproduce the runner, install *inside* a Node 20 container rather tha
 host's `node_modules`, which holds platform-specific binaries:
 
 ```bash
-docker run --rm -v "$PWD/frontend":/src -w /work node:20-alpine sh -c '
+docker run --rm -v "$PWD/web":/src -w /work node:20-alpine sh -c '
   cp /src/package.json /src/package-lock.json /src/tsconfig.json \
      /src/react-router.config.ts /src/vite.config.ts /work/
   npm ci --no-audit --no-fund
@@ -534,7 +534,7 @@ docker run --rm -v "$PWD/frontend":/src -w /work node:20-alpine sh -c '
 To add a dependency without touching the host's `node_modules` at all:
 
 ```bash
-docker run --rm -v "$PWD/frontend":/app -w /app node:20-alpine \
+docker run --rm -v "$PWD/web":/app -w /app node:20-alpine \
   npm install --package-lock-only --save <pkg>
 ```
 
@@ -568,7 +568,7 @@ cd backend && .venv/bin/python -m pytest tests/ -q
 The frontend has 107 of its own, in 8 files:
 
 ```bash
-cd frontend && npm test
+cd web && npm test
 ```
 
 ```
@@ -597,7 +597,7 @@ uvicorn main:app --reload --port 8700
 ```
 
 ```bash
-cd frontend && npm install && npm run dev     # http://localhost:5173
+cd web && npm install && npm run dev     # http://localhost:5173
 ```
 
 Loaders and actions call the backend server-side through `app/lib/api.server.ts`, which reads

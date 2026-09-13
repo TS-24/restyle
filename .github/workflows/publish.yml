@@ -48,7 +48,7 @@ jobs:
           - service: backend
             context: ./backend
           - service: frontend
-            context: ./frontend
+            context: ./web
     steps:
       - uses: actions/checkout@v7
 
