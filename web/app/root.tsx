@@ -35,7 +35,10 @@ export async function loader({ request }: Route.LoaderArgs) {
 }
 
 // Fonts are bundled from @fontsource-variable, so there is nothing to preconnect to.
-export const links: Route.LinksFunction = () => [];
+export const links: Route.LinksFunction = () => [
+  { rel: "icon", href: "/favicon.png", type: "image/png" },
+  { rel: "apple-touch-icon", href: "/apple-touch-icon.png" },
+];
 
 export function Layout({ children }: { children: React.ReactNode }) {
   // Not `useLoaderData`: this component also wraps the error boundary, and there
