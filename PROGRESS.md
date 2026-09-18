@@ -651,11 +651,14 @@ frequency normalisation.
 app holds on a *user's* behalf rather than the deployment's. LangChain talks to
 whichever of two providers the reader configured on `/settings`; the key is
 Fernet-encrypted at rest and never leaves through the API. Finishing a chat asks
-the same provider for a summary in three parts — what it was about and its
-topics, what the reader kept asking, what the answers concentrated on — which is
-what the chat's card shows in the library from then on, because nobody rereads a
-transcript. Parts two and three only work because the transcript labels its
-speakers; an unlabelled block cannot separate the asking from the answering.
+the same provider to write the conversation up as notes — flowing prose about
+the subject, and a short list of anything to go and do — and that becomes the
+text of the note the chat is bound to, because nobody rereads a transcript. It
+was four fields until #57 (general, topics, questions, answers); two of those
+were about the reader by construction, which is the one thing notes must never
+be about, and nothing in the interface ever read them. The transcript still
+labels its speakers: notes written from a block that cannot tell a question from
+an answer read as mush.
 
 Hugging Face was the original plan for the summary and was **dropped before any
 of it was written**: `summarization` against `bart-large-cnn` cannot follow an
